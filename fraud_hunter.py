@@ -1,78 +1,147 @@
 import os
-from dotenv import load_dotenv
-from telethon import TelegramClient, events
+import re
+import asyncio
 import psycopg2
+from psycopg2 import sql
+from telethon import TelegramClient, events
+from PIL import Image
+import pytesseract
 
-# Carregar variáveis de ambiente
-load_dotenv()
+# -----------------------
+# Configurações
+# -----------------------
+API_ID = int(os.getenv("TG_API_ID"))
+API_HASH = os.getenv("TG_API_HASH")
+PHONE = os.getenv("TG_PHONE")
 
-API_ID = int(os.getenv("API_ID"))
-API_HASH = os.getenv("API_HASH")
-PHONE = os.getenv("PHONE")
+DB_NAME = os.getenv("DB_NAME")
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+DB_HOST = os.getenv("DB_HOST")
+DB_PORT = os.getenv("DB_PORT")
 
-db_config = {
-    "dbname": os.getenv("DB_NAME"),
-    "user": os.getenv("DB_USER"),
-    "password": os.getenv("DB_PASSWORD"),
-    "host": os.getenv("DB_HOST"),
-    "port": os.getenv("DB_PORT")
-}
-
-# Conectar ao banco
-conn = psycopg2.connect(**db_config)
-cursor = conn.cursor()
-
-# Criar tabela hunter_data se não existir
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS hunter_data (
-    id SERIAL PRIMARY KEY,
-    grupo TEXT,
-    usuario TEXT,
-    mensagem TEXT,
-    data TIMESTAMP,
-    tipo_fraude TEXT
-)
-""")
-conn.commit()
-
-# Diagrama de classificação de fraudes
-FRAUDE_GRUPOS = {
+# Termos de fraude
+FRAUD_TERMS = {
     "Contas": ["laranja", "anjo"],
     "Golpes e esquemas": ["vazamento", "exploit", "backdoor", "bug", "esquema", "clone", "tela", "tela fake", "golpe"],
     "Venda de contas": ["virada", "transformar", "saldo", "limite", "desbloqueio", "viradinha"],
-    "Cartões": ["Info CC", "CC full", "aprovação", "CC", "bin", "virtual", "cartão virtual", "cartão", "clonado", "score alto"],
+    "Cartões": ["info CC", "CC full", "aprovação", "CC", "bin", "virtual", "cartão virtual", "cartão", "clonado", "score alto"],
     "Ilícitos": ["bico", "ref", "referência"]
 }
 
-# Iniciar cliente Telegram com sessão salva
-client = TelegramClient("fraud_hunter.session", API_ID, API_HASH)
+# Marcas monitoradas
+BRANDS = ["nubank", "itau", "picpay", "mercado pago", "infinite pay", "bradesco", "santander", "inter"]
 
-@client.on(events.NewMessage)
-async def handler(event):
-    if event.is_group:
-        grupo = (await event.get_chat()).title
-        sender = await event.get_sender()
-        usuario = sender.username if sender.username else f"id_{sender.id}"
-        mensagem = event.message.message
-        data = event.message.date
-
-        # Detectar tipo de fraude
-        tipo_fraude_detectado = None
-        for tipo_fraude, termos in FRAUDE_GRUPOS.items():
-            if any(term.lower() in mensagem.lower() for term in termos):
-                tipo_fraude_detectado = tipo_fraude
-                break
-
-        # Salvar no banco apenas se algum tipo de fraude for detectado
-        if tipo_fraude_detectado:
-            print(f"[{grupo}] {usuario}: {mensagem} | Tipo: {tipo_fraude_detectado}")
-            cursor.execute(
-                "INSERT INTO hunter_data (grupo, usuario, mensagem, data, tipo_fraude) VALUES (%s, %s, %s, %s, %s)",
-                (grupo, usuario, mensagem, data, tipo_fraude_detectado)
+# -----------------------
+# Função para conectar ao DB e criar tabela
+# -----------------------
+def get_db_connection():
+    try:
+        conn = psycopg2.connect(
+            dbname=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            host=DB_HOST,
+            port=DB_PORT
+        )
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS fraudhunter_data (
+                id SERIAL PRIMARY KEY,
+                message_text TEXT,
+                fraud_type TEXT,
+                brands TEXT,
+                from_user TEXT,
+                chat_title TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-            conn.commit()
+        """)
+        conn.commit()
+        cursor.close()
+        return conn
+    except Exception as e:
+        print(f"[DB ERROR] {e}")
+        return None
 
-# Conectar e rodar
-client.start()
-print("📥 Coletando mensagens com palavras-chave e salvando no banco hunter_data...")
-client.run_until_disconnected()
+# -----------------------
+# Funções de classificação
+# -----------------------
+def classify_fraud(message):
+    detected_types = []
+    for fraud_type, terms in FRAUD_TERMS.items():
+        for term in terms:
+            if re.search(rf"\b{re.escape(term)}\b", message, re.IGNORECASE):
+                detected_types.append(fraud_type)
+                break
+    return ", ".join(detected_types) if detected_types else None
+
+def detect_brands(message):
+    detected = [brand for brand in BRANDS if re.search(rf"\b{re.escape(brand)}\b", message, re.IGNORECASE)]
+    return ", ".join(detected) if detected else None
+
+# -----------------------
+# Função para processar imagens via OCR
+# -----------------------
+def extract_text_from_image(file_path):
+    try:
+        img = Image.open(file_path)
+        text = pytesseract.image_to_string(img, lang="por")
+        return text
+    except Exception as e:
+        print(f"[OCR ERROR] {e}")
+        return ""
+
+# -----------------------
+# Função principal
+# -----------------------
+async def main():
+    conn = get_db_connection()
+    if not conn:
+        print("[DB] Conexão falhou")
+        return
+
+    client = TelegramClient('fraud_hunter.session', API_ID, API_HASH)
+    await client.start(PHONE)
+    print("[Telegram] Bot rodando e monitorando mensagens...")
+
+    @client.on(events.NewMessage)
+    async def handler(event):
+        message_text = event.message.message or ""
+        if event.message.media:
+            file_path = await event.message.download_media()
+            ocr_text = extract_text_from_image(file_path)
+            message_text += " " + ocr_text
+
+        if not message_text.strip():
+            return
+
+        fraud_type = classify_fraud(message_text)
+        brands = detect_brands(message_text)
+
+        # Salvar apenas se encontrar fraude + marca
+        if fraud_type and brands:
+            try:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    INSERT INTO fraudhunter_data (message_text, fraud_type, brands, from_user, chat_title)
+                    VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    (message_text, fraud_type, brands, str(event.sender_id), event.chat.title if event.chat else None)
+                )
+                conn.commit()
+                cursor.close()
+                print(f"[DB] Mensagem salva: Fraud={fraud_type}, Brands={brands}")
+            except Exception as e:
+                print(f"[DB ERROR] {e}")
+                conn.rollback()
+        else:
+            print("[SKIP] Não tinha fraude + marca, ignorado.")
+
+    await client.run_until_disconnected()
+
+# -----------------------
+# Entry point
+# -----------------------
+if __name__ == "__main__":
+    asyncio.run(main())

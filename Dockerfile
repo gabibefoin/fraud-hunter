@@ -1,25 +1,26 @@
-# Usar imagem oficial do Python
+# Usa imagem oficial do Python
 FROM python:3.11-slim
 
-# Instala dependências do sistema para OCR (Tesseract)
+# Instala dependências do sistema + Tesseract com português
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
+    tesseract-ocr-por \
     libtesseract-dev \
+    poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
-# Definir diretório de trabalho dentro do container
+# Define diretório de trabalho
 WORKDIR /app
 
-# Copiar requirements e instalar dependências
+# Copia requirements e instala dependências Python
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiar código e arquivo de sessão do Telegram
-COPY fraud_hunter.py .
-# COPY fraud_hunter.session .  # sessão salva localmente
+# Copia o restante do código
+COPY . .
 
-# Copiar .env
-COPY .env .
+# Define variáveis de ambiente padrão
+ENV PYTHONUNBUFFERED=1
 
-# Comando para rodar o script
+# Comando de execução
 CMD ["python", "fraud_hunter.py"]
