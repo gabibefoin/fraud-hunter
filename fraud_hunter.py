@@ -1,3 +1,4 @@
+from dotenv import load_dotenv
 import os
 import re
 import asyncio
@@ -6,6 +7,8 @@ from psycopg2 import sql
 from telethon import TelegramClient, events
 from PIL import Image
 import pytesseract
+
+load_dotenv()
 
 # -----------------------
 # Configurações
