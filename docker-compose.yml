@@ -1,0 +1,8 @@
+services:
+  fraud-hunter:
+    build: .
+    container_name: fraud-hunter
+    env_file:
+      - .env
+    volumes:
+      - ./fraud_hunter.session:/app/fraud_hunter.session

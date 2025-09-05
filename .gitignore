@@ -1,0 +1,11 @@
+# Arquivos Python compilados
+__pycache__/
+*.pyc
+
+# Credenciais e ambientes
+.env
+fraud_hunter.session
+
+# Logs ou banco de dados local
+*.log
+*.sqlite3

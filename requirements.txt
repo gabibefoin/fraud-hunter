@@ -1,0 +1,5 @@
+telethon
+psycopg2-binary
+python-dotenv
+pillow
+pytesseract
