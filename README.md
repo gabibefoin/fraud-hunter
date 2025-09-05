@@ -56,13 +56,13 @@ cp .env-example .env
 1. **Build da imagem Docker**
 
 ```bash
-docker build -t telegram-bot .
+docker build -t fraud-hunter .
 ```
 
 2. **Rodar o container interativamente indicando o arquivo .env**
 
 ```bash
-docker run --env-file .env -it --name telegram-bot telegram-bot
+docker run --rm -it fraud-hunter
 ```
 
 > O bot iniciará e pedirá o código de autenticação do Telegram, em seguida começará a monitorar mensagens e salvar no banco de dados.
