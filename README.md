@@ -62,10 +62,10 @@ docker build -t fraud-hunter .
 2. **Rodar o container interativamente indicando o arquivo .env**
 
 ```bash
-docker run --rm -it fraud-hunter
+docker run --env-file .env -it --name fraud-hunter fraud-hunter
 ```
 
-> O bot iniciará e pedirá o código de autenticação do Telegram, em seguida começará a monitorar mensagens e salvar no banco de dados.
+> O bot iniciará e pedirá o código de autenticação do Telegram (enviado no aplicativo e não por SMS) em seguida começará a monitorar mensagens e salvar no banco de dados.
 
 ---
 
