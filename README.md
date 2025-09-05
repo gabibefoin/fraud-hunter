@@ -4,6 +4,11 @@
 O **Fraud Hunter** é uma automação de monitoramento voltada para identificar menções a fraudes relacionadas a marcas financeiras em grupos de Telegram.  
 O projeto visa coletar, classificar e armazenar informações relevantes sobre possíveis atividades ilícitas para análises futuras e demonstração de habilidades em OSINT, automação e integração com bancos de dados.
 
+## Fluxo e lógica
+
+<img width="2105" height="716" alt="image" src="https://github.com/user-attachments/assets/5977037e-cd14-4b1d-bee6-5ce9ee393cf7" />
+
+
 ## Termos Monitorados e Motivos
 O sistema monitora palavras-chave que indicam potenciais fraudes, classificando-as de acordo com o tipo de fraude:
 
